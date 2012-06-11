@@ -1,0 +1,11 @@
+Name: bunrui
+Version: 1.0
+License: BSD3
+Cabal-Version: >= 1.2
+Build-Type: Simple
+
+Executable bunrui
+  Main-is: Main.hs
+  Build-Depends: base, containers, directory, filepath, process,
+                 filemanip, spawn, parsec >= 3
+  GHC-Options: -Wall -O2 -threaded
