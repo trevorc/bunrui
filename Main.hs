@@ -1,9 +1,11 @@
 module Main where
 
-import Data.List                  (intercalate)
-import System.Environment         (getArgs, getProgName)
-import System.Exit                (exitFailure)
-import System.IO                  (hPutStrLn, stderr)
+import Control.Category   ((>>>))
+import Data.List          (intercalate)
+import System.Environment (getArgs, getProgName)
+import System.Exit        (exitFailure)
+import System.FilePath    (addTrailingPathSeparator)
+import System.IO          (hPutStrLn, stderr)
 import System.Console.GetOpt
 
 import Bunrui.Core
@@ -18,19 +20,24 @@ commands = [("incoming", sortIncoming),
 
 options :: [OptDescr (Opts -> Opts)]
 options =
-    [ Option "i" [] (ReqArg (\x o -> o {incomingDirectory = x}) "DIR")
+    [ Option "i" [] (ReqArg (addTrailingPathSeparator >>> \x o ->
+                                 o {incomingDirectory = x}) "DIR")
                  "incoming directory"
-    , Option "o" [] (ReqArg (\x o -> o {mastersDirectory = x})  "DIR")
+    , Option "o" [] (ReqArg (addTrailingPathSeparator >>> \x o ->
+                                 o {mastersDirectory = x})  "DIR")
                  "masters directory"
+    , Option "e" [] (ReqArg (addTrailingPathSeparator >>> \x o ->
+                                 o {encodedDirectory = x})  "DIR")
+                 "encoded directory"
     , Option "y" [] (NoArg (\o -> o {assumeYes = True})) "assume yes"
     ]
 
 optionDefaults :: Opts
 optionDefaults =
     Opts { assumeYes = False
-         , incomingDirectory = "Incoming"
-         , mastersDirectory  = "Masters"
-         , encodedDirectory  = "Encoded"
+         , incomingDirectory = "Incoming/"
+         , mastersDirectory  = "Masters/"
+         , encodedDirectory  = "Encoded/"
          }
 
 usage :: String -> IO a

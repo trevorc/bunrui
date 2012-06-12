@@ -2,17 +2,14 @@ module Bunrui.Util where
 
 import Prelude hiding (any, foldr)
 import Control.Applicative ((<$>))
-import Data.Foldable  (Foldable, any, foldr)
+import Control.Monad  (foldM)
 import Data.List      (inits)
-import Control.Monad  (MonadPlus, mplus, mzero, unless)
+import Control.Monad  (unless)
 import System.Exit    (ExitCode(..))
 import System.FilePath (dropFileName, joinPath, splitDirectories)
 import System.Process (readProcessWithExitCode)
 import System.IO      (hFlush, stdout)
 
-
-(<.>) :: (c -> d) -> (a -> b -> c) -> a -> b -> d
-(f <.> g) x y = f (g x y)
 
 maybeToEither :: e -> Maybe a -> Either e a
 maybeToEither e = maybe (Left e) Right
@@ -35,12 +32,8 @@ runCommand cmd args = do
 unlessM :: Monad m => m Bool -> m () -> m ()
 unlessM cond th = cond >>= flip unless th
 
-elemBy :: Foldable f => (a -> b -> Bool) -> a -> f b -> Bool
-elemBy = (any .)
-
-nubBy :: (MonadPlus m, Foldable m) => (a -> a -> Bool) -> m a -> m a
-nubBy eq = foldr f mzero
-    where f x a = (if elemBy eq x a then mzero else return x) `mplus` a
+orM :: Monad m => [m Bool] -> m Bool
+orM = foldM (\a x -> if a then return a else x) False
 
 leadingPathComponents :: FilePath -> [FilePath]
 leadingPathComponents = drop 1 . map joinPath . inits .

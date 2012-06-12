@@ -1,3 +1,4 @@
+{-# OPTIONS_GHC -fno-warn-unused-do-bind #-}
 module Bunrui.Transcode (transcode) where
 
 import Control.Applicative ((<$>))
@@ -9,7 +10,7 @@ import Data.Maybe       (fromJust)
 import System.Directory (copyFile, createDirectory, doesDirectoryExist,
                          doesFileExist, getModificationTime)
 import System.FilePath  ((</>), replaceExtension, takeExtension,
-                         addTrailingPathSeparator, takeFileName)
+                         takeFileName)
 import System.IO        (Handle, IOMode(WriteMode), withFile)
 import System.Process
 import Text.Printf      (printf)
@@ -25,18 +26,16 @@ type Extension = String
 data Strategy = Transcode | Copy
 
 
-comparingModificationTime :: FilePath -> FilePath -> IO Ordering
-comparingModificationTime = liftM2 compare `on` getModificationTime
+compareModificationTime :: FilePath -> FilePath -> IO Ordering
+compareModificationTime = liftM2 compare `on` getModificationTime
 
 isNewerThan :: FilePath -> FilePath -> IO Bool
-isNewerThan = fmap (GT ==) <.> comparingModificationTime
+x `isNewerThan` y = (GT ==) <$> x `compareModificationTime` y
 
 isStale :: FilePath -> FilePath -> IO Bool
-isStale x y = do
-  missing <- not <$> doesFileExist y
-  if missing
-    then return True
-    else isNewerThan x y
+isStale x y = orM [ not <$> doesFileExist y
+                  , x `isNewerThan` y
+                  ]
 
 extensions :: [(Extension, Strategy)]
 extensions = [ (".ogg", Transcode)
@@ -101,35 +100,35 @@ doTranscode src dest = go strategy ext
           ext      = takeExtension src
           encode   = uncurry (encodeM4A dest)
 
-shouldContinue :: [FilePath] -> [(FilePath, FilePath)] -> IO Bool
+
+shouldContinue :: [FilePath] -> [(FilePath, FilePath)] -> IO ()
 shouldContinue missing stale = do
-  null missing `unless` do
+  unless (null missing) $ do
     putStrLn "New directories:"
     mapM_ putStrLn $ map ("  " ++) missing
-  null stale `unless` do
-    putStrLn "Transcodes:"
-    forM_ stale $ \(x, y) -> printf "  %s -> %s\n" x y
-  prompt
+  putStrLn "Transcodes:"
+  forM_ stale $ \(x, y) -> printf "  %s -> %s\n" x y
 
 transcode :: Command
-transcode opts = do
-  let masters = addTrailingPathSeparator $ mastersDirectory opts
-      encoded = addTrailingPathSeparator $ encodedDirectory opts
-      toDestPath = encodedExtension . (encoded </>) .
+transcode (Opts { mastersDirectory = masters
+                , encodedDirectory = encoded
+                , assumeYes = yes
+                }) = do
+  let toDestPath = encodedExtension . (encoded </>) .
                    fromJust . stripPrefix masters
   transcodes <- map (id &&& toDestPath) <$> findSourceFiles masters
   stale <- filterM (uncurry isStale) transcodes
   when (null stale) $ error "nothing to do"
   missing <- filterM (fmap not . doesDirectoryExist) $ nub $
              concatMap (leadingPathComponents . snd) stale
-  continue <-  if assumeYes opts then return True
-               else shouldContinue missing stale
+  continue <- if yes then return True
+              else shouldContinue missing stale >> prompt
   when continue $ do
     let width = maximum $ map (length . takeFileName . snd) stale
+        format = "[%d/%d] Encoding %-" ++ show width ++ "s ( %s, %s )\n"
         total = length stale
     mapM_ createDirectory missing
     p <- pool numCapabilities
     flip parMapIO_ (zip [1..] stale) $ \(n, (src, dest)) -> p $ do
-        printf ("[%d/%d] Encoding %-" ++ show width ++ "s ( %s, %s )\n")
-               (n::Int) total (takeFileName dest) src dest
+        printf format (n::Int) total (takeFileName dest) src dest
         doTranscode src dest

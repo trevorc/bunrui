@@ -1,6 +1,5 @@
 module Bunrui.Incoming (sortIncoming) where
 
-import Control.Applicative ((<$>))
 import Control.Monad       (filterM, forM_, unless, when)
 import Data.List           (intercalate, nub)
 import Text.Printf         (printf)
@@ -21,7 +20,7 @@ masterPath lastTrack meta =
                      (metaExtension meta)
           lastTrackLength = show $ min 2 $ length $ show lastTrack
 
-shouldContinue :: [FilePath] -> [(FilePath, FilePath)] -> IO Bool
+shouldContinue :: [FilePath] -> [(FilePath, FilePath)] -> IO ()
 shouldContinue newDirs txcodes = do
   putStrLn "Creating"
   putStrLn "========"
@@ -29,7 +28,6 @@ shouldContinue newDirs txcodes = do
   putStrLn "\nMoving"
   putStrLn "======"
   forM_ txcodes $ \(x, y) -> putStrLn $ " * " ++ x ++ " -> " ++ y
-  prompt
 
 sortIncoming :: Command
 sortIncoming (Opts { assumeYes = yes
@@ -50,7 +48,8 @@ sortIncoming (Opts { assumeYes = yes
        error ("refusing to overwrite target files (would overwrite " ++
               intercalate ", " wouldOverwrite ++ ")")
   missing <- filterM (fmap not . doesDirectoryExist) destDirs
-  continue <- if yes then return True else shouldContinue missing toMove
+  continue <- if yes then return True
+              else shouldContinue missing toMove >> prompt
   when continue $ do
     mapM_ createDirectory missing
     mapM_ (uncurry renameFile) toMove
