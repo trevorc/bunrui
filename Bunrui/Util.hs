@@ -4,7 +4,7 @@ import Prelude hiding (any, foldr)
 import Control.Applicative ((<$>))
 import Control.Monad  (foldM)
 import Data.List      (inits)
-import Control.Monad  (unless)
+import Control.Monad  (when, unless)
 import System.Exit    (ExitCode(..))
 import System.FilePath (dropFileName, joinPath, splitDirectories)
 import System.Process (readProcessWithExitCode)
@@ -29,8 +29,11 @@ runCommand cmd args = do
     (ExitSuccess, out, _)   -> return out
     (_,           _,   err) -> error err
 
-unlessM :: Monad m => m Bool -> m () -> m ()
-unlessM cond th = cond >>= flip unless th
+whenM :: Monad m => m Bool -> m () -> m ()
+whenM cond = (cond >>=) . flip when
+
+unlessM :: Monad m => m Bool-> m () -> m ()
+unlessM cond = (cond >>=) . flip unless
 
 orM :: Monad m => [m Bool] -> m Bool
 orM = foldM (\a x -> if a then return a else x) False

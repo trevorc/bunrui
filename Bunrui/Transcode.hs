@@ -1,11 +1,11 @@
 {-# OPTIONS_GHC -fno-warn-unused-do-bind #-}
 module Bunrui.Transcode (transcode) where
 
-import Control.Applicative ((<$>))
+import Control.Applicative ((<$>), (<*>), liftA2)
 import Control.Arrow    ((&&&))
-import Control.Monad    (filterM, forM_, liftM2, void, unless, when)
+import Control.Monad    (filterM, forM_, join, unless, void)
 import Data.Function    (on)
-import Data.List        (nub, stripPrefix)
+import Data.List        (stripPrefix)
 import Data.Maybe       (fromMaybe)
 import System.Directory (copyFile, createDirectory, doesDirectoryExist,
                          doesFileExist, getModificationTime)
@@ -26,11 +26,8 @@ type Extension = String
 data Strategy = Transcode | Copy
 
 
-compareModificationTime :: FilePath -> FilePath -> IO Ordering
-compareModificationTime = liftM2 compare `on` getModificationTime
-
 isNewerThan :: FilePath -> FilePath -> IO Bool
-x `isNewerThan` y = (GT ==) <$> x `compareModificationTime` y
+isNewerThan = liftA2 (>) `on` getModificationTime
 
 isStale :: FilePath -> FilePath -> IO Bool
 isStale x y = orM [ not <$> doesFileExist y
@@ -55,14 +52,18 @@ encodedExtension src = go strategy src
           go Copy      = id
           strategy     = strategyForFile src
 
+pipeSource :: String -> [String] -> IO Handle
+pipeSource name args = do
+  (_, Just hout, _, _) <- createProcess $
+                          (proc name args) {std_out = CreatePipe}
+  return hout
+
 decodeOgg :: FilePath -> IO Handle
-decodeOgg path = do (_, Just hout, _, _) <- createProcess process
-                    return hout
-    where oggdecArgs = ["--quiet", "--output", "-", "--", path]
-          process = (proc "oggdec" oggdecArgs) {std_out = CreatePipe}
+decodeOgg path = pipeSource "oggdec" ["--quiet", "--output", "-", "--", path]
 
 decodeFlac :: FilePath -> IO Handle
-decodeFlac = undefined
+decodeFlac path = pipeSource "flac" ["--decode", "--stdout", "--silent",
+                                     "--warnings-as-errors", path]
 
 encodeM4A :: FilePath -> Metadata -> Handle -> IO ()
 encodeM4A dest metadata inputStream =
@@ -86,45 +87,42 @@ encodeM4A dest metadata inputStream =
           doArg name meta = maybe [] ((name:) . return) (meta metadata)
 
 doTranscode :: FilePath -> FilePath -> IO ()
-doTranscode src dest = go (strategyForFile src) $ takeExtension src
+doTranscode src dest = go (strategyForFile src) (takeExtension src)
     where go :: Strategy -> Extension -> IO ()
-          go Transcode ".ogg"  = decodeOgg src >>= encode
-          go Transcode ".flac" = decodeFlac src >>= encode
+          go Transcode ".ogg"  = join $ encode <*> decodeOgg src
+          go Transcode ".flac" = join $ encode <*> decodeFlac src
           go Transcode _       = error "unhandled extension"
           go Copy      _       = copyFile src dest
-          encode handle = do
-            metadata <- readMetadata src
-            encodeM4A src metadata handle
+          encode = encodeM4A src <$> readMetadata src
 
-shouldContinue :: [FilePath] -> [(FilePath, FilePath)] -> IO ()
-shouldContinue missing stale = do
-  unless (null missing) $ do
-    putStrLn "New directories:"
-    mapM_ putStrLn $ map ("  " ++) missing
-  putStrLn "Transcodes:"
-  forM_ stale $ \(x, y) -> printf "  %s -> %s\n" x y
+rewritePath :: FilePath -> FilePath -> (FilePath -> FilePath)
+rewritePath masters encoded = encodedExtension . (encoded </>) .
+                              fromMaybe (error "not in " ++ masters) .
+                              stripPrefix masters
+
+missingDirectories :: [FilePath] -> IO [FilePath]
+missingDirectories = filterM (fmap not . doesDirectoryExist) .
+                     concatMap leadingPathComponents
 
 transcode :: Command
 transcode (Opts { mastersDirectory = masters
                 , encodedDirectory = encoded
                 , assumeYes = yes
                 }) = do
-  let toDestPath = encodedExtension . (encoded </>) .
-                   fromMaybe (error "unknown extension") .
-                   stripPrefix masters
-  transcodes <- map (id &&& toDestPath) <$> findSourceFiles masters
+  transcodes <- map (id &&& rewritePath masters encoded) <$>
+                findSourceFiles masters
   stale <- filterM (uncurry isStale) transcodes
-  when (null stale) $ error "nothing to do"
-  missing <- filterM (fmap not . doesDirectoryExist) $ nub $
-             concatMap (leadingPathComponents . snd) stale
-  continue <- if yes then return True
-              else shouldContinue missing stale >> prompt
-  when continue $ do
-    let width = maximum $ map (length . takeFileName . snd) stale
-        format = "[%d/%d] Encoding %-" ++ show width ++ "s ( %s, %s )\n"
-        total = length stale
-    mapM_ createDirectory missing
-    p <- pool numCapabilities
-    flip parMapIO_ (zip [1..] stale) $ \(n, (src, dest)) -> p $ do
-        printf format (n::Int) total (takeFileName dest) src dest
-        doTranscode src dest
+  unless (null stale) $ do
+    orM [ return yes
+        , do forM_ stale $ \(x, y) -> printf "  %s -> %s\n" x y
+             prompt
+        ] `whenM` do
+      let width = maximum $ map (length . takeFileName . snd) stale
+          format = "[%d/%d] Encoding %-" ++ show width ++ "s ( %s, %s )\n"
+          total = length stale
+      missing <- missingDirectories (map snd stale)
+      mapM_ createDirectory missing
+      p <- pool numCapabilities
+      flip parMapIO_ (zip [1..] stale) $ \(n, (src, dest)) -> p $ do
+          printf format (n::Int) total (takeFileName dest) src dest
+          doTranscode src dest
