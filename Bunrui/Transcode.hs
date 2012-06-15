@@ -6,7 +6,7 @@ import Control.Arrow    ((&&&))
 import Control.Monad    (filterM, forM_, liftM2, void, unless, when)
 import Data.Function    (on)
 import Data.List        (nub, stripPrefix)
-import Data.Maybe       (fromJust)
+import Data.Maybe       (fromMaybe)
 import System.Directory (copyFile, createDirectory, doesDirectoryExist,
                          doesFileExist, getModificationTime)
 import System.FilePath  ((</>), replaceExtension, takeExtension,
@@ -45,7 +45,7 @@ extensions = [ (".ogg", Transcode)
              ]
 
 strategyForFile :: FilePath -> Strategy
-strategyForFile = maybe (error "unknown extension") id .
+strategyForFile = fromMaybe (error "unknown extension") .
                   flip lookup extensions .
                   takeExtension
 
@@ -55,29 +55,25 @@ encodedExtension src = go strategy src
           go Copy      = id
           strategy     = strategyForFile src
 
-decodeOgg :: FilePath -> IO (Metadata, Handle)
-decodeOgg path = liftM2 (,) metadata handle
-    where metadata = readMetadata path
-          handle = do
-            let oggdecArgs = ["--quiet", "--output", "-", "--", path]
-                process = (proc "oggdec" oggdecArgs) {
-                            std_out = CreatePipe}
-            (_, Just hout, _, _) <- createProcess process
-            return hout
+decodeOgg :: FilePath -> IO Handle
+decodeOgg path = do (_, Just hout, _, _) <- createProcess process
+                    return hout
+    where oggdecArgs = ["--quiet", "--output", "-", "--", path]
+          process = (proc "oggdec" oggdecArgs) {std_out = CreatePipe}
 
-decodeFlac :: FilePath -> IO (Metadata, Handle)
+decodeFlac :: FilePath -> IO Handle
 decodeFlac = undefined
 
 encodeM4A :: FilePath -> Metadata -> Handle -> IO ()
 encodeM4A dest metadata inputStream =
-  withFile "/dev/null" WriteMode
-               $ \nul -> do
-                 (_, _, _, h) <- createProcess $ (proc "faac" faacArgs) {
-                                        std_err = UseHandle nul
-                                      , std_in  = UseHandle inputStream
-                                      }
-                 void $ waitForProcess h
-    where faacArgs = metadataArgs ++ ["-o", dest, "-q", "150", "-w", "-"]
+    withFile "/dev/null" WriteMode $ \nul -> do
+      (_, _, _, h) <- runFaac nul
+      void $ waitForProcess h
+    where runFaac nul = createProcess $ (proc "faac" faacArgs) {
+                          std_err = UseHandle nul
+                        , std_in  = UseHandle inputStream
+                        }
+          faacArgs = metadataArgs ++ ["-o", dest, "-q", "150", "-w", "-"]
           metadataArgs = concatMap (uncurry doArg) $
                          [ ("--title",  return . metaTitle)
                          , ("--artist", return . metaArtist)
@@ -90,16 +86,15 @@ encodeM4A dest metadata inputStream =
           doArg name meta = maybe [] ((name:) . return) (meta metadata)
 
 doTranscode :: FilePath -> FilePath -> IO ()
-doTranscode src dest = go strategy ext
+doTranscode src dest = go (strategyForFile src) $ takeExtension src
     where go :: Strategy -> Extension -> IO ()
           go Transcode ".ogg"  = decodeOgg src >>= encode
           go Transcode ".flac" = decodeFlac src >>= encode
           go Transcode _       = error "unhandled extension"
           go Copy      _       = copyFile src dest
-          strategy = strategyForFile src
-          ext      = takeExtension src
-          encode   = uncurry (encodeM4A dest)
-
+          encode handle = do
+            metadata <- readMetadata src
+            encodeM4A src metadata handle
 
 shouldContinue :: [FilePath] -> [(FilePath, FilePath)] -> IO ()
 shouldContinue missing stale = do
@@ -115,7 +110,8 @@ transcode (Opts { mastersDirectory = masters
                 , assumeYes = yes
                 }) = do
   let toDestPath = encodedExtension . (encoded </>) .
-                   fromJust . stripPrefix masters
+                   fromMaybe (error "unknown extension") .
+                   stripPrefix masters
   transcodes <- map (id &&& toDestPath) <$> findSourceFiles masters
   stale <- filterM (uncurry isStale) transcodes
   when (null stale) $ error "nothing to do"
