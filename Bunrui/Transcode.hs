@@ -3,7 +3,7 @@ module Bunrui.Transcode (transcode) where
 
 import Control.Applicative ((<$>), (<*>), liftA2)
 import Control.Arrow    ((&&&))
-import Control.Monad    (filterM, forM_, join, unless, void)
+import Control.Monad    (filterM, forM_, join, unless, when, void)
 import Data.Function    (on)
 import Data.List        (stripPrefix)
 import Data.Maybe       (fromMaybe)
@@ -93,30 +93,29 @@ doTranscode src dest = go (strategyForFile src) (takeExtension src)
           go Transcode ".flac" = join $ encode <*> decodeFlac src
           go Transcode _       = error "unhandled extension"
           go Copy      _       = copyFile src dest
-          encode = encodeM4A src <$> readMetadata src
+          encode = encodeM4A dest <$> readMetadata src
 
 rewritePath :: FilePath -> FilePath -> (FilePath -> FilePath)
 rewritePath masters encoded = encodedExtension . (encoded </>) .
                               fromMaybe (error "not in " ++ masters) .
                               stripPrefix masters
 
-missingDirectories :: [FilePath] -> IO [FilePath]
-missingDirectories = filterM (fmap not . doesDirectoryExist) .
-                     concatMap leadingPathComponents
-
 transcode :: Command
 transcode (Opts { mastersDirectory = masters
                 , encodedDirectory = encoded
                 , assumeYes = yes
                 }) = do
+  hasMasters <- doesDirectoryExist masters
+  unless (hasMasters) $ error ("no such directory " ++ show masters)
   transcodes <- map (id &&& rewritePath masters encoded) <$>
                 findSourceFiles masters
   stale <- filterM (uncurry isStale) transcodes
   unless (null stale) $ do
-    orM [ return yes
-        , do forM_ stale $ \(x, y) -> printf "  %s -> %s\n" x y
-             prompt
-        ] `whenM` do
+    continue <- orM [ return yes
+                    , do forM_ stale (uncurry $ printf "  %s -> %s\n")
+                         prompt
+                    ]
+    when continue $ do
       let width = maximum $ map (length . takeFileName . snd) stale
           format = "[%d/%d] Encoding %-" ++ show width ++ "s ( %s, %s )\n"
           total = length stale

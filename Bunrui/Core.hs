@@ -3,14 +3,17 @@ module Bunrui.Core
     , Metadata(..)
     , Opts(..)
     , findSourceFiles
+    , missingDirectories
     , readMetadata
     ) where
 
 import Control.Applicative ((<$>), (<*), (<*>))
-import Control.Monad       (when)
+import Control.Monad       (filterM, when)
 import Data.Char           (toLower)
-import Data.List           (delete)
-import System.FilePath     (takeExtension)
+import Data.List           (delete, inits, nub)
+import System.Directory    (doesDirectoryExist)
+import System.FilePath     (dropFileName, joinPath, splitDirectories,
+                            takeExtension)
 import qualified Data.Map as M
 
 import System.FilePath.Find (always, extension, find)
@@ -94,3 +97,11 @@ findSourceFiles :: FilePath -> IO [FilePath]
 findSourceFiles = find always isSourceExtension
     where isSourceExtension = flip elem sourceExtensions <$> extension
           sourceExtensions = [".ogg", ".flac"]
+
+leadingPathComponents :: FilePath -> [FilePath]
+leadingPathComponents = drop 1 . map joinPath . inits .
+                        splitDirectories . dropFileName
+
+missingDirectories :: [FilePath] -> IO [FilePath]
+missingDirectories = filterM (fmap not . doesDirectoryExist) .
+                     nub . concatMap leadingPathComponents

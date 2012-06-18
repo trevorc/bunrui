@@ -3,10 +3,7 @@ module Bunrui.Util where
 import Prelude hiding (any, foldr)
 import Control.Applicative ((<$>))
 import Control.Monad  (foldM)
-import Data.List      (inits)
-import Control.Monad  (when, unless)
 import System.Exit    (ExitCode(..))
-import System.FilePath (dropFileName, joinPath, splitDirectories)
 import System.Process (readProcessWithExitCode)
 import System.IO      (hFlush, stdout)
 
@@ -29,18 +26,8 @@ runCommand cmd args = do
     (ExitSuccess, out, _)   -> return out
     (_,           _,   err) -> error err
 
-whenM :: Monad m => m Bool -> m () -> m ()
-whenM cond = (cond >>=) . flip when
-
-unlessM :: Monad m => m Bool-> m () -> m ()
-unlessM cond = (cond >>=) . flip unless
-
 orM :: Monad m => [m Bool] -> m Bool
 orM = foldM (\a x -> if a then return a else x) False
-
-leadingPathComponents :: FilePath -> [FilePath]
-leadingPathComponents = drop 1 . map joinPath . inits .
-                        splitDirectories . dropFileName
 
 prompt :: IO Bool
 prompt = do
