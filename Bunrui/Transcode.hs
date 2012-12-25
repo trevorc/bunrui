@@ -15,9 +15,6 @@ import System.IO        (Handle, IOMode(WriteMode), withFile)
 import System.Process
 import Text.Printf      (printf)
 
-import Control.Concurrent.Spawn (parMapIO_, pool)
-import GHC.Conc (numCapabilities)
-
 import Bunrui.Core
 import Bunrui.Util
 
@@ -121,7 +118,6 @@ transcode (Opts { mastersDirectory = masters
           total = length stale
       missing <- missingDirectories (map snd stale)
       mapM_ createDirectory missing
-      p <- pool numCapabilities
-      flip parMapIO_ (zip [1..] stale) $ \(n, (src, dest)) -> p $ do
+      parForIO_ (zip [1..] stale) $ \(n, (src, dest)) -> do
           printf format (n::Int) total (takeFileName dest) src dest
           doTranscode src dest

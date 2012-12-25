@@ -7,6 +7,9 @@ import System.Exit    (ExitCode(..))
 import System.Process (readProcessWithExitCode)
 import System.IO      (hFlush, stdout)
 
+import Control.Concurrent.Spawn (parMapIO_, pool)
+import GHC.Conc (numCapabilities)
+
 
 maybeToEither :: e -> Maybe a -> Either e a
 maybeToEither e = maybe (Left e) Right
@@ -34,3 +37,8 @@ prompt = do
   putStr "\nContinue [y/N]? "
   hFlush stdout
   flip elem ["Y", "y"] <$> getLine
+
+parForIO_ :: [a] -> (a -> IO b) -> IO ()
+parForIO_ xs m = do
+  p <- pool numCapabilities
+  parMapIO_ (p . m) xs
