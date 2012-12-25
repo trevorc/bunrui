@@ -41,7 +41,7 @@ data Metadata = Metadata
     , metaTrack         :: Integer
     , metaYear          :: Maybe Integer
     , metaGenre         :: Maybe String
-    }
+    } deriving Show
 
 type StringMap = M.Map String String
 
@@ -63,7 +63,7 @@ metadata ext m = do
   when (trackNumber < 1) $ Left "non-positive track"
   year <- case M.lookup "year" m of
             Nothing   -> return Nothing
-            Just year -> maybeToEither ("bad year: " ++ year) $ maybeRead year
+            Just year -> Just <$> maybeToEither ("bad year: " ++ show year) (maybeRead year)
   return Metadata
              { metaExtension = ext
              , metaAlbum = album
@@ -83,9 +83,9 @@ commentParser = many (lineParser `sepEndBy1` newline) >> getState
 
 readMetadata :: FilePath -> IO Metadata
 readMetadata path = either metadataError id .
-                   either (error . show) (metadata ext) .
-                   runParser commentParser M.empty path <$>
-                   getMeta ext
+                    either (error . show) (metadata ext) .
+                    runParser commentParser M.empty path <$>
+                    getMeta ext
     where ext = takeExtension path
           getMeta ".flac" = runCommand "metaflac"
                             ["--export-tags-to=-", path]
@@ -95,7 +95,7 @@ readMetadata path = either metadataError id .
 
 findSourceFiles :: FilePath -> IO [FilePath]
 findSourceFiles = find always isSourceExtension
-    where isSourceExtension = flip elem sourceExtensions <$> extension
+    where isSourceExtension = fmap (`elem` sourceExtensions) extension
           sourceExtensions = [".ogg", ".flac"]
 
 leadingPathComponents :: FilePath -> [FilePath]

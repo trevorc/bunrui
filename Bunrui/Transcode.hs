@@ -75,7 +75,7 @@ encodeM4A dest metadata inputStream =
                         , std_in  = UseHandle inputStream
                         }
           faacArgs = metadataArgs ++ ["-o", dest, "-q", "150", "-w", "-"]
-          metadataArgs = concatMap (uncurry doArg) $
+          metadataArgs = concatMap (uncurry doArg)
                          [ ("--title",  return . metaTitle)
                          , ("--artist", return . metaArtist)
                          , ("--album",  return . metaAlbum)
@@ -95,7 +95,7 @@ doTranscode src dest = go (strategyForFile src) (takeExtension src)
           go Copy      _       = copyFile src dest
           encode = encodeM4A dest <$> readMetadata src
 
-rewritePath :: FilePath -> FilePath -> (FilePath -> FilePath)
+rewritePath :: FilePath -> FilePath -> FilePath -> FilePath
 rewritePath masters encoded = encodedExtension . (encoded </>) .
                               fromMaybe (error "not in " ++ masters) .
                               stripPrefix masters
@@ -106,7 +106,7 @@ transcode (Opts { mastersDirectory = masters
                 , assumeYes = yes
                 }) = do
   hasMasters <- doesDirectoryExist masters
-  unless (hasMasters) $ error ("no such directory " ++ show masters)
+  unless hasMasters $ error ("no such directory " ++ show masters)
   transcodes <- map (id &&& rewritePath masters encoded) <$>
                 findSourceFiles masters
   stale <- filterM (uncurry isStale) transcodes
