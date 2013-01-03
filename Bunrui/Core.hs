@@ -11,6 +11,7 @@ import Control.Applicative ((<$>), (<*), (<*>))
 import Control.Monad       (filterM, when)
 import Data.Char           (toLower)
 import Data.List           (delete, inits, nub)
+import Data.Traversable    (for)
 import System.Directory    (doesDirectoryExist)
 import System.FilePath     (dropFileName, joinPath, splitDirectories,
                             takeExtension)
@@ -51,6 +52,10 @@ type StringMap = M.Map String String
 (!) :: Ord k => M.Map k a -> k -> Either k a
 a ! k = maybeToEither k (M.lookup k a)
 
+parse :: Read r => String -> String -> Either String r
+parse e x = maybeToEither errMsg $ maybeRead x
+    where errMsg = "couldn't parse " ++ e ++ ": " ++ x
+
 metadata :: String
          -> M.Map String String
          -> Either String Metadata
@@ -58,14 +63,10 @@ metadata ext m = do
   album <- m ! "album"
   title <- m ! "title"
   artist <- m ! "artist"
-  track <- m ! "tracknumber"
-  let genre = M.lookup "genre" m
-      errMsg = "tracknumber did not parse: " ++ track
-  trackNumber <- maybeToEither errMsg $ maybeRead track
+  trackNumber <- parse "tracknumber" =<< m ! "tracknumber"
   when (trackNumber < 1) $ Left "non-positive track"
-  year <- case M.lookup "year" m of
-            Nothing   -> return Nothing
-            Just year -> Just <$> maybeToEither ("bad year: " ++ show year) (maybeRead year)
+  year <- for (M.lookup "year" m) $ parse "year"
+  let genre = M.lookup "genre" m
   return Metadata
              { metaExtension = ext
              , metaAlbum = album
