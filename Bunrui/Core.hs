@@ -16,10 +16,11 @@ import System.FilePath     (dropFileName, joinPath, splitDirectories,
                             takeExtension)
 import qualified Data.Map as M
 
-import System.FilePath.Find (always, extension, find)
-import Text.Parsec          (Parsec, runParser, many,
-                             many1, getState, modifyState, noneOf,
-                             oneOf, char, newline, sepEndBy1)
+import Data.Text.ICU.Normalize (NormalizationMode)
+import System.FilePath.Find    (always, extension, find)
+import Text.Parsec             (Parsec, runParser, many,
+                                many1, getState, modifyState, noneOf,
+                                oneOf, char, newline, sepEndBy1)
 
 import Bunrui.Util
 
@@ -29,6 +30,7 @@ data Opts = Opts
     , incomingDirectory :: FilePath
     , mastersDirectory  :: FilePath
     , encodedDirectory  :: FilePath
+    , normalizationMode :: NormalizationMode
     }
 
 type Command = Opts -> IO ()

@@ -8,11 +8,21 @@ import System.FilePath    (addTrailingPathSeparator)
 import System.IO          (hPutStrLn, stderr)
 import System.Console.GetOpt
 
+import Data.Text.ICU.Normalize (NormalizationMode(NFC, NFD))
+
 import Bunrui.Core
 import Bunrui.Incoming
 import Bunrui.Transcode
 import Bunrui.Util
 
+
+instance Read NormalizationMode where
+    readsPrec _ r = do
+      (m, s) <- lex r
+      case m of
+        "NFC" -> return (NFC, s)
+        "NFD" -> return (NFD, s)
+        _     -> error $ "invalid normalization mode " ++ m
 
 commands :: [(String, Command)]
 commands = [("incoming", sortIncoming),
@@ -23,12 +33,15 @@ options =
     [ Option "i" [] (ReqArg (addTrailingPathSeparator >>> \x o ->
                                  o {incomingDirectory = x}) "DIR")
                  "incoming directory"
-    , Option "o" [] (ReqArg (addTrailingPathSeparator >>> \x o ->
+    , Option "m" [] (ReqArg (addTrailingPathSeparator >>> \x o ->
                                  o {mastersDirectory = x})  "DIR")
                  "masters directory"
     , Option "e" [] (ReqArg (addTrailingPathSeparator >>> \x o ->
                                  o {encodedDirectory = x})  "DIR")
                  "encoded directory"
+    , Option "n" [] (ReqArg (read >>> \x o ->
+                                 o {normalizationMode = x}) "MODE")
+                 "normalization mode"
     , Option "y" [] (NoArg (\o -> o {assumeYes = True})) "assume yes"
     ]
 
@@ -38,6 +51,7 @@ optionDefaults =
          , incomingDirectory = "Incoming/"
          , mastersDirectory  = "Masters/"
          , encodedDirectory  = "Encoded/"
+         , normalizationMode = NFC
          }
 
 usage :: String -> IO a

@@ -7,5 +7,5 @@ Build-Type: Simple
 Executable bunrui
   Main-is: Main.hs
   Build-Depends: base, containers, directory, filepath, process,
-                 filemanip, spawn, parsec >= 3
+                 filemanip, spawn, text, text-icu, parsec >= 3
   GHC-Options: -Wall -O2 -threaded
