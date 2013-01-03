@@ -78,6 +78,7 @@ encodeM4A dest metadata inputStream =
                          , ("--album",  return . metaAlbum)
                          , ("--track",  return . show . metaTrack)
                          , ("--year",   fmap show . metaYear)
+                         , ("--disc",   fmap show . metaDisc)
                          , ("--genre",  metaGenre)
                          ]
           doArg :: String -> (Metadata -> Maybe String) -> [String]

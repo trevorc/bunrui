@@ -44,6 +44,7 @@ data Metadata = Metadata
     , metaTrack         :: Integer
     , metaYear          :: Maybe Integer
     , metaGenre         :: Maybe String
+    , metaDisc          :: Maybe Integer
     } deriving Show
 
 type StringMap = M.Map String String
@@ -66,6 +67,7 @@ metadata ext m = do
   trackNumber <- parse "tracknumber" =<< m ! "tracknumber"
   when (trackNumber < 1) $ Left "non-positive track"
   year <- for (M.lookup "year" m) $ parse "year"
+  disc <- for (M.lookup "disc" m) $ parse "disc"
   let genre = M.lookup "genre" m
   return Metadata
              { metaExtension = ext
@@ -75,6 +77,7 @@ metadata ext m = do
              , metaTrack = trackNumber
              , metaGenre = genre
              , metaYear = year
+             , metaDisc = disc
              }
 
 commentParser :: Parsec String StringMap StringMap
