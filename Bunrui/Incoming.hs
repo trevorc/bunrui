@@ -17,7 +17,7 @@ import Bunrui.Util
 masterPath :: Integer -> NormalizationMode -> Metadata -> FilePath
 masterPath lastTrack mode meta =
     foldr1 combine $ map (normalize' . replace '/' '_') parts
-    where parts = [metaArtist meta, metaAlbum meta, fileName]
+    where parts = [metaAlbumArtist meta, metaAlbum meta, fileName]
           normalize' = unpack . normalize mode . pack
           fileName = printf ("%." ++ lastTrackLength ++ "d %s%s")
                      (metaTrack meta) (metaTitle meta)

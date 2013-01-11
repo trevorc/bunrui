@@ -65,24 +65,29 @@ decodeFlac path = pipeSource "flac" ["--decode", "--stdout", "--silent",
 encodeM4A :: FilePath -> Metadata -> Handle -> IO ()
 encodeM4A dest metadata inputStream =
     withFile "/dev/null" WriteMode $ \nul -> do
-      (_, _, _, h) <- runFaac nul
-      void $ waitForProcess h
-    where runFaac nul = createProcess $ (proc "faac" faacArgs) {
+      { (_, _, _, h) <- createProcess $ (proc "faac" faacArgs) {
                           std_err = UseHandle nul
                         , std_in  = UseHandle inputStream
                         }
-          faacArgs = metadataArgs ++ ["-o", dest, "-q", "150", "-w", "-"]
+      ; void $ waitForProcess h
+      }
+    where faacArgs = metadataArgs ++ ["-o", dest, "-q", "150", "-w", "-"]
           metadataArgs = concatMap (uncurry doArg)
-                         [ ("--title",  return . metaTitle)
-                         , ("--artist", return . metaArtist)
-                         , ("--album",  return . metaAlbum)
+                         [ ("--title",  return        . metaTitle)
+                         , ("--artist", return        . metaArtist)
+                         , ("--album",  return        . metaAlbum)
                          , ("--track",  return . show . metaTrack)
-                         , ("--year",   fmap show . metaYear)
-                         , ("--disc",   fmap show . metaDisc)
-                         , ("--genre",  metaGenre)
+                         , ("--year",       fmap show . metaYear)
+                         , ("--disc",       fmap show . formatDisc)
+                         , ("--genre",                  metaGenre)
                          ]
           doArg :: String -> (Metadata -> Maybe String) -> [String]
           doArg name meta = maybe [] ((name:) . return) (meta metadata)
+          formatDisc :: Metadata -> Maybe String
+          formatDisc (Metadata {
+                      metaDisc = disc
+                    , metaTotalDiscs = totalDiscs
+                    }) = printf "%d/%d" <$> disc <*> totalDiscs
 
 doTranscode :: FilePath -> FilePath -> IO ()
 doTranscode src dest = go (strategyForFile src) (takeExtension src)

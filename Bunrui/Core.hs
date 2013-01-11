@@ -41,10 +41,12 @@ data Metadata = Metadata
     , metaAlbum         :: String
     , metaTitle         :: String
     , metaArtist        :: String
+    , metaAlbumArtist   :: String
     , metaTrack         :: Integer
     , metaYear          :: Maybe Integer
     , metaGenre         :: Maybe String
     , metaDisc          :: Maybe Integer
+    , metaTotalDiscs    :: Maybe Integer
     } deriving Show
 
 type StringMap = M.Map String String
@@ -65,19 +67,26 @@ metadata ext m = do
   title <- m ! "title"
   artist <- m ! "artist"
   trackNumber <- parse "tracknumber" =<< m ! "tracknumber"
-  when (trackNumber < 1) $ Left "non-positive track"
-  year <- for (M.lookup "year" m) $ parse "year"
-  disc <- for (M.lookup "disc" m) $ parse "disc"
+  year <- M.lookup "year" m `for` parse "year"
+  disc <- M.lookup "discnumber" m `for` parse "discnumber"
+  totalDiscs <- M.lookup "totaldiscs" m `for` parse "totaldiscs"
+  when (trackNumber < 1) $
+       Left "non-positive track"
+  when (fmap (> 1) disc == Just True && totalDiscs == Nothing) $
+       Left "got discnumber > 1 but no totaldiscs"
   let genre = M.lookup "genre" m
+      albumArtist = maybe artist id $ M.lookup "albumartist" m
   return Metadata
-             { metaExtension = ext
-             , metaAlbum = album
-             , metaTitle = title
-             , metaArtist = artist
-             , metaTrack = trackNumber
-             , metaGenre = genre
-             , metaYear = year
-             , metaDisc = disc
+             { metaExtension   = ext
+             , metaAlbum       = album
+             , metaTitle       = title
+             , metaArtist      = artist
+             , metaAlbumArtist = albumArtist
+             , metaTrack       = trackNumber
+             , metaGenre       = genre
+             , metaYear        = year
+             , metaDisc        = disc
+             , metaTotalDiscs  = totalDiscs
              }
 
 commentParser :: Parsec String StringMap StringMap
