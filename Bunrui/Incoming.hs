@@ -1,7 +1,10 @@
 module Bunrui.Incoming (sortIncoming) where
 
+import Control.Arrow       (first)
+import Control.Applicative ((<$>))
 import Control.Monad       (filterM, forM_, unless, when)
-import Data.List           (intercalate)
+import Data.List           (intercalate, partition)
+import Data.Maybe          (catMaybes, fromMaybe, isJust)
 import Text.Printf         (printf)
 import System.FilePath     ((</>), combine)
 import System.Directory    (createDirectory, doesDirectoryExist,
@@ -14,15 +17,26 @@ import Bunrui.Core
 import Bunrui.Util
 
 
-masterPath :: Integer -> NormalizationMode -> Metadata -> FilePath
-masterPath lastTrack mode meta =
+masterPath :: Integer           -- | highest track number
+           -> (Maybe Integer)   -- | Just highest disc number or Nothing
+           -> NormalizationMode
+           -> Metadata
+           -> FilePath
+masterPath lastTrack lastDisc mode meta =
     foldr1 combine $ map (normalize' . replace '/' '_') parts
-    where parts = [metaAlbumArtist meta, metaAlbum meta, fileName]
+    where parts = catMaybes [ Just (metaAlbumArtist meta)
+                            , Just (metaAlbum meta)
+                            , discName <$> lastDisc
+                            , Just fileName
+                            ]
           normalize' = unpack . normalize mode . pack
-          fileName = printf ("%." ++ lastTrackLength ++ "d %s%s")
+          discName lastDiscNo = printf ("CD %." ++ intLength 1 lastDiscNo ++ "d")
+                                (fromMaybe (error "impossible--no disc") $
+                                           metaDisc meta)
+          fileName = printf ("%." ++ intLength 2 lastTrack ++ "d %s%s")
                      (metaTrack meta) (metaTitle meta)
                      (metaExtension meta)
-          lastTrackLength = show $ min 2 $ length $ show lastTrack
+          intLength minLength = show . min minLength . length . show
 
 sortIncoming :: Command
 sortIncoming (Opts { assumeYes         = yes
@@ -35,9 +49,20 @@ sortIncoming (Opts { assumeYes         = yes
   sourceFiles <- findSourceFiles incoming
   unless (null sourceFiles) $ do
     annotated <- mapM readMetadata sourceFiles
-    let lastTrack = maximum (map metaTrack annotated)
-        destFiles = map ((masters </>) . masterPath lastTrack mode) annotated
+    let (withDisc, withoutDisc)
+            = first catMaybes .
+              partition isJust .
+              map metaDisc $ annotated
+        lastTrack = maximum (map metaTrack annotated)
+        lastDisc = case withDisc of
+                     [] -> Nothing
+                     _  -> Just (maximum withDisc)
+        destFiles = map ((masters </>) .
+                         masterPath lastTrack lastDisc mode)
+                    annotated
         toMove = zip sourceFiles destFiles
+    when (null withDisc == null withoutDisc) $
+         error "some files missing a disc number"
     wouldOverwrite <- filterM doesFileExist destFiles
     unless (null wouldOverwrite) $
            error ("refusing to overwrite target files (would overwrite " ++
