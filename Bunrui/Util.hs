@@ -2,10 +2,11 @@ module Bunrui.Util where
 
 import Prelude hiding (any, foldr)
 import Control.Applicative ((<$>))
-import Control.Monad  (foldM)
-import System.Exit    (ExitCode(..))
-import System.Process (readProcessWithExitCode)
-import System.IO      (hFlush, stdout)
+import Control.Monad       (foldM)
+import Data.Maybe          (listToMaybe)
+import System.Exit         (ExitCode(..))
+import System.Process      (readProcessWithExitCode)
+import System.IO           (hFlush, stdout)
 
 import Control.Concurrent.Spawn (parMapIO_, pool)
 import GHC.Conc (numCapabilities)
@@ -15,9 +16,7 @@ maybeToEither :: e -> Maybe a -> Either e a
 maybeToEither e = maybe (Left e) Right
 
 maybeRead :: (Read a) => String -> Maybe a
-maybeRead s = case reads s of
-                [(x, "")] -> Just x
-                _         -> Nothing
+maybeRead s = fst <$> listToMaybe (reads s)
 
 replace :: (Functor f, Eq a) => a -> a -> f a -> f a
 replace x y = fmap $ \a -> if a == x then y else a

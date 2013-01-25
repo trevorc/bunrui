@@ -1,6 +1,7 @@
 module Main where
 
 import Control.Category   ((>>>))
+import Control.Monad      (mzero)
 import Data.List          (intercalate)
 import System.Environment (getArgs, getProgName)
 import System.Exit        (exitFailure)
@@ -22,7 +23,7 @@ instance Read NormalizationMode where
       case m of
         "NFC" -> return (NFC, s)
         "NFD" -> return (NFD, s)
-        _     -> error $ "invalid normalization mode " ++ m
+        _     -> mzero
 
 commands :: [(String, Command)]
 commands = [("incoming", sortIncoming),

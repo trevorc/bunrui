@@ -1,10 +1,9 @@
 module Bunrui.Incoming (sortIncoming) where
 
 import Control.Arrow       (first)
-import Control.Applicative ((<$>))
 import Control.Monad       (filterM, forM_, unless, when)
 import Data.List           (intercalate, partition)
-import Data.Maybe          (catMaybes, fromMaybe, isJust)
+import Data.Maybe          (catMaybes, fromJust, isJust)
 import Text.Printf         (printf)
 import System.FilePath     ((</>), combine)
 import System.Directory    (createDirectory, doesDirectoryExist,
@@ -26,13 +25,14 @@ masterPath lastTrack lastDisc mode meta =
     foldr1 combine $ map (normalize' . replace '/' '_') parts
     where parts = catMaybes [ Just (metaAlbumArtist meta)
                             , Just (metaAlbum meta)
-                            , discName <$> lastDisc
+                            , lastDisc >>= discName
                             , Just fileName
                             ]
           normalize' = unpack . normalize mode . pack
-          discName lastDiscNo = printf ("CD %." ++ intLength 1 lastDiscNo ++ "d")
-                                (fromMaybe (error "impossible--no disc") $
-                                           metaDisc meta)
+          discName lastDiscNo = if lastDiscNo > 1
+                                  then Just $ printf ("CD %." ++ intLength 1 lastDiscNo ++ "d")
+                                           (fromJust $ metaDisc meta)
+                                  else Nothing
           fileName = printf ("%." ++ intLength 2 lastTrack ++ "d %s%s")
                      (metaTrack meta) (metaTitle meta)
                      (metaExtension meta)
