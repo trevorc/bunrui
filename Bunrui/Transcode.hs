@@ -49,27 +49,27 @@ encodedExtension src = go strategy src
           go Copy      = id
           strategy     = strategyForFile src
 
-pipeSource :: String -> [String] -> IO Handle
+pipeSource :: String -> [String] -> IO (Handle, ProcessHandle)
 pipeSource name args = do
-  (_, Just hout, _, _) <- createProcess $
+  (_, Just hout, _, p) <- createProcess $
                           (proc name args) {std_out = CreatePipe}
-  return hout
+  return (hout, p)
 
-decodeOgg :: FilePath -> IO Handle
+decodeOgg :: FilePath -> IO (Handle, ProcessHandle)
 decodeOgg path = pipeSource "oggdec" ["--quiet", "--output", "-", "--", path]
 
-decodeFlac :: FilePath -> IO Handle
+decodeFlac :: FilePath -> IO (Handle, ProcessHandle)
 decodeFlac path = pipeSource "flac" ["--decode", "--stdout", "--silent",
                                      "--warnings-as-errors", path]
 
-encodeM4A :: FilePath -> Metadata -> Handle -> IO ()
-encodeM4A dest metadata inputStream =
+encodeM4A :: FilePath -> Metadata -> Handle -> ProcessHandle -> IO ()
+encodeM4A dest metadata inputStream inputProcess =
     withFile "/dev/null" WriteMode $ \nul -> do
       { (_, _, _, h) <- createProcess $ (proc "faac" faacArgs) {
                           std_err = UseHandle nul
                         , std_in  = UseHandle inputStream
                         }
-      ; void $ waitForProcess h
+      ; void $ waitForProcess h >> waitForProcess inputProcess
       }
     where faacArgs = metadataArgs ++ ["-o", dest, "-q", "150", "-w", "-"]
           metadataArgs = concatMap (uncurry doArg)
@@ -96,7 +96,7 @@ doTranscode src dest = go (strategyForFile src) (takeExtension src)
           go Transcode ".flac" = join $ encode <*> decodeFlac src
           go Transcode _       = error "unhandled extension"
           go Copy      _       = copyFile src dest
-          encode = encodeM4A dest <$> readMetadata src
+          encode = uncurry <$> encodeM4A dest <$> readMetadata src
 
 rewritePath :: FilePath -> FilePath -> FilePath -> FilePath
 rewritePath masters encoded = encodedExtension . (encoded </>) .
